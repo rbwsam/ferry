@@ -2,8 +2,6 @@ package main
 
 import (
 	"github.com/rbwsam/ferry/mysql"
-	"runtime"
-	"sync"
 	"github.com/rbwsam/ferry/ferry"
 	"io/ioutil"
 	"encoding/json"
@@ -19,32 +17,14 @@ func main() {
 	prepareDest(destCfg)
 	tables := getTables(srcCfg)
 
-	var wg sync.WaitGroup
-	jobs := make(chan string)
-
-	worker := func(jobs <-chan string) {
-		for tableName := range jobs {
-			copier := mysql.NewTableCopier(tableName, srcCfg, destCfg)
-			if tableName == "sessions" || tableName == "versions" {
-				copier.CreateTable()
-			} else {
-				copier.Copy()
-			}
-			copier.Close()
+	for _, tableName := range *tables {
+		if tableName == "sessions" || tableName == "versions" {
+			continue
 		}
-		wg.Done()
+		copier := mysql.NewTableCopier(tableName, srcCfg, destCfg)
+		copier.Copy()
+		copier.Close()
 	}
-
-	for w := 0; w < runtime.GOMAXPROCS(-1); w++ {
-		wg.Add(1)
-		go worker(jobs)
-	}
-
-	for _, name := range *tables {
-		jobs <- name
-	}
-	close(jobs)
-	wg.Wait()
 }
 
 func getConfigs(path *string) (*mysql.Config, *mysql.Config) {

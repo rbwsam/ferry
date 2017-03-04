@@ -7,6 +7,8 @@ import (
 	"github.com/rbwsam/ferry/util"
 	"log"
 	"strings"
+	"sync"
+	"runtime"
 )
 
 type TableCopier struct {
@@ -30,26 +32,41 @@ func (tc *TableCopier) Copy() {
 	rows := tc.getRows()
 	defer rows.Close()
 
-	tc.Destination.LockTable(tc.Name)
+	//tc.Destination.LockTable(tc.Name)
 	tc.Destination.DisableKeys(tc.Name)
+
+	var wg sync.WaitGroup
+	jobs := make(chan bytes.Buffer)
+
+	worker := func(id int, jobs <- chan bytes.Buffer) {
+		for buffer := range jobs {
+			tc.insertValues(&buffer)
+		}
+		wg.Done()
+	}
+
+	for w := 0; w < runtime.GOMAXPROCS(-1); w++ {
+		wg.Add(1)
+		go worker(w, jobs)
+	}
 
 	var buffer bytes.Buffer
 	for rows.Next() {
 		values := tc.scanToValues(rows)
 
 		if buffer.Len()+len(values) > 1e+6 { // 1MB
-			tc.insertValues(&buffer)
+			jobs <- buffer
 			buffer = bytes.Buffer{}
 		}
 		buffer.WriteString(values)
 		buffer.WriteString(",")
 	}
-	if buffer.Len() > 0 {
-		tc.insertValues(&buffer)
-	}
+
+	close(jobs)
+	wg.Wait()
 
 	tc.Destination.EnableKeys(tc.Name)
-	tc.Destination.UnlockTables()
+	//tc.Destination.UnlockTables()
 
 	util.CheckError(rows.Err())
 	log.Printf("Done copying table `%s`", tc.Name)
