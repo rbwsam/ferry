@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
-	"github.com/rbwsam/ferry/util"
 	"log"
 	"strings"
+
+	"github.com/rbwsam/ferry/util"
 )
 
 type TableCopier struct {
@@ -26,7 +27,6 @@ func NewTableCopier(tableName string, srcCfg, destCfg *Config) *TableCopier {
 func (tc *TableCopier) Copy() {
 	log.Printf("Starting to copy table `%s`", tc.Name)
 
-	tc.CreateTable()
 	rows := tc.getRows()
 	defer rows.Close()
 
